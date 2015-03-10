@@ -36,10 +36,11 @@ trait FileInputStreamFileSystem extends InputStreamFileSystem {
 
   override def list(path: String) = new io.File(root, path) match {
     case file if file.exists() && file.isFile => Array(file.getName)
-    case directory if directory.exists() && directory.isDirectory && directory.list() != null =>
-      directory.listFiles().map(file => if (file.isDirectory) file.getName + "/" else file.getName)
-    //case _ => throw new io.FileNotFoundException(path)
-		case _ => null
+    case directory if directory.exists() && directory.isDirectory =>
+      			if(directory.list() == null) new Array[String](0)
+			else directory.listFiles().map(file => if (file.isDirectory) file.getName + "/" else file.getName)
+    case _ => throw new io.FileNotFoundException(path)
+		//case _ => null
   }
 
   // ----------------------------------------------------------------------- //
