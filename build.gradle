@@ -169,8 +169,8 @@ dependencies {
     provided name: 'ProjectRed', version: config.projred.version, ext: 'jar'
     provided name: 'redlogic', version: config.redlogic.version, ext: 'jar'
 
-    provided name: 'CoFHLib', version: config.cofhlib.version, ext: 'jar'
-    provided name: 'MineFactoryReloaded', version: config.mfr.version, ext: 'jar'
+//    provided name: 'CoFHLib', version: config.cofhlib.version, ext: 'jar'
+//    provided name: 'MineFactoryReloaded', version: config.mfr.version, ext: 'jar'
     provided name: 'ComputerCraft', version: config.cc.version, ext: 'jar'
     provided name: 'EnderIO', version: config.eio.version, ext: 'jar'
     provided name: 'Railcraft', version: config.rc.version, ext: 'jar'
