@@ -24,6 +24,20 @@ trait VirtualFileSystem extends OutputStreamFileSystem {
       case _ => false
     }
 
+/*
+	override def isRealDirectory(path: String) = root.get(segments(path)) match {
+		case Some(obj) => obj.isRealDirectory
+		case _ => false
+	}
+*/
+
+//	override def isRealDirectory(path: String) = _.isDirectory
+
+	override def isRealDirectory(path: String) = root.get(segments(path)) match {
+		case Some(obj) => obj.isDirectory
+		case _ => false
+	}
+
   override def size(path: String) =
     root.get(segments(path)) match {
       case Some(obj) => obj.size

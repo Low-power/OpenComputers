@@ -35,6 +35,8 @@ class CompositeReadOnlyFileSystem(factories: mutable.LinkedHashMap[String, Calla
 
   override def isDirectory(path: String) = findFileSystem(path).fold(false)(_.isDirectory(path))
 
+	override def isRealDirectory(path: String) = findFileSystem(path).fold(false)(_.isRealDirectory(path))
+
   override def lastModified(path: String) = findFileSystem(path).fold(0L)(_.lastModified(path))
 
   override def list(path: String) = if (isDirectory(path)) {

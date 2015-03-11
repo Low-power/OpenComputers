@@ -13,6 +13,8 @@ class ComputerCraftFileSystem(val mount: IMount) extends InputStreamFileSystem {
 
   override def isDirectory(path: String) = mount.isDirectory(path)
 
+	override def isRealDirectory(path: String) = mount.isDirectory(path)
+
   override def lastModified(path: String) = 0L
 
   override def list(path: String) = {

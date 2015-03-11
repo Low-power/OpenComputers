@@ -97,12 +97,14 @@ trait Capacity extends OutputStreamFileSystem {
 
   // ----------------------------------------------------------------------- //
 
-  private def computeSize(path: String): Long =
-    Settings.get.fileCost +
-      size(path) +
-      (if (isDirectory(path))
-        list(path).foldLeft(0L)((acc, child) => acc + computeSize(path + child))
-      else 0)
+  private def computeSize(path: String): Long = {
+	//var file = new io.File(path)
+	li.cil.oc.OpenComputers.log.info("methon: computeSize(" + path + ")")
+	Settings.get.fileCost + size(path) +
+	//	(if(file.isDirectory() && file.getAbsolutePath().equals(file.getCanonicalPath()))
+		(if(isRealDirectory(path)) list(path).foldLeft(0L)((acc, child) => acc + computeSize(path + child))
+		else 0)
+  }
 
   protected class CountingOutputHandle(override val owner: Capacity, val inner: OutputHandle) extends OutputHandle(inner.owner, inner.handle, inner.path) {
     override def isClosed = inner.isClosed

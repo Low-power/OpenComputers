@@ -45,6 +45,10 @@ class ZipFileInputStreamFileSystem(private val archive: ArchiveDirectory) extend
     entry(path).exists(_.isDirectory)
   }
 
+	override def isRealDirectory(path: String) = ZipFileInputStreamFileSystem.synchronized {
+		entry(path).exists(_.isDirectory)
+	}
+
   def lastModified(path: String) = ZipFileInputStreamFileSystem.synchronized {
     entry(path) match {
       case Some(file) => file.lastModified

@@ -84,6 +84,9 @@ public interface FileSystem extends Persistable {
      */
     boolean isDirectory(String path);
 
+	boolean isRealDirectory(String path);
+
+
     /**
      * Gets the timestamp of the last time the file at the specified path was
      * written to.
