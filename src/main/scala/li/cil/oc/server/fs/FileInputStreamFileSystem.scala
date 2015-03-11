@@ -33,23 +33,27 @@ trait FileInputStreamFileSystem extends InputStreamFileSystem {
   override def isDirectory(path: String) = new io.File(root, path).isDirectory
 
 	override def isRealDirectory(path: String) = {
+		//li.cil.oc.OpenComputers.log.info("methon: isRealDirectory(" + path + ")")
 		var file = new io.File(root, path)
-		file.isDirectory() && file.getAbsolutePath().equals(file.getCanonicalPath())
+		var abpath = file.getAbsolutePath()
+		//li.cil.oc.OpenComputers.log.info("isDirectory ? " + file.isDirectory())
+		//li.cil.oc.OpenComputers.log.info("AbsolutePath: " + abpath)
+		//li.cil.oc.OpenComputers.log.info("CanonicalPath: " + file.getCanonicalPath())
+		abpath = abpath.replace('\\', '/')
+		if(abpath.charAt(abpath.length() - 1) == '/') abpath = abpath.substring(0, abpath.length() - 1)
+		//li.cil.oc.OpenComputers.log.info("NewAbsolutePath: " + abpath)
+		file.isDirectory() && abpath.equals(file.getCanonicalPath().replace('\\', '/'))
 	}
 
-  override def lastModified(path: String) = new io.File(root, path).lastModified
+	override def lastModified(path: String) = new io.File(root, path).lastModified
 
-  override def list(path: String) = new io.File(root, path) match {
-    case file if file.exists() && file.isFile => Array(file.getName)
-    case directory if directory.exists() && directory.isDirectory =>
-			//System.err.printf("list(%s)\n", path)
-			if(path.length > 1024) throw new Exception("path too long " + path)
-      			if(directory.list() == null) new Array[String](0)
-			else directory.listFiles().map(file => if (file.isDirectory) file.getName + "/" else file.getName)
-    //case _ => throw new io.FileNotFoundException(path)
-		//case _ => null
+	override def list(path: String) = new io.File(root, path) match {
+		case file if file.exists() && file.isFile => Array(file.getName)
+		case directory if directory.exists() && directory.isDirectory && directory.list() != null =>
+			if(path.length() > 512) throw new io.IOException("path too long " + path)
+			directory.listFiles().map(file => if (file.isDirectory) file.getName + "/" else file.getName)
 		case _ => new Array[String](0)
-  }
+	}
 
   // ----------------------------------------------------------------------- //
 

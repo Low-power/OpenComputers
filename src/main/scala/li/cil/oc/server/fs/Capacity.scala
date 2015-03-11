@@ -99,7 +99,7 @@ trait Capacity extends OutputStreamFileSystem {
 
   private def computeSize(path: String): Long = {
 	//var file = new io.File(path)
-	li.cil.oc.OpenComputers.log.info("methon: computeSize(" + path + ")")
+	//li.cil.oc.OpenComputers.log.info("methon: computeSize(" + path + ")")
 	Settings.get.fileCost + size(path) +
 	//	(if(file.isDirectory() && file.getAbsolutePath().equals(file.getCanonicalPath()))
 		(if(isRealDirectory(path)) list(path).foldLeft(0L)((acc, child) => acc + computeSize(path + child))
