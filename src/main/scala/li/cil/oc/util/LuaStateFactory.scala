@@ -44,9 +44,9 @@ object LuaStateFactory {
 		else if (SystemUtils.IS_OS_LINUX && Architecture.IS_OS_X64) "native.amd64-linux-gnu.so"
 		else if (SystemUtils.IS_OS_LINUX && Architecture.IS_OS_X86) "native.i386-linux-gnu.so"
 
-		else if(SystemUtils.IS_OS_SOLARIS && Architecture.IS_OS_X86) "native.i386-solaris.so"
-		else if(SystemUtils.IS_OS_SOLARIS && Architecture.IS_OS_X64) "native.amd64-solaris.so"
-		else if(SystemUtils.IS_OS_SOLARIS && Architecture.IS_OS_SPARC64) "native.sparc64-solaris.so"
+		else if(OS.IS_OS_SOLARIS && Architecture.IS_OS_X86) "native.i386-solaris.so"
+		else if(OS.IS_OS_SOLARIS && Architecture.IS_OS_X64) "native.amd64-solaris.so"
+		else if(OS.IS_OS_SOLARIS && Architecture.IS_OS_SPARC64) "native.sparc64-solaris.so"
 
 		else if (SystemUtils.IS_OS_MAC && Architecture.IS_OS_X64) "native.amd64-apple-darwin.dylib"
 		else if (SystemUtils.IS_OS_MAC && Architecture.IS_OS_X86) "native.i386-apple-darwin.dylib"
@@ -115,7 +115,6 @@ object LuaStateFactory {
     // If the file, already exists, make sure it's the same we need, if it's
     // not disable use of the natives.
     if (tmpLibFile.exists()) {
-      OpenComputers.log.info("temp file exists")
       var matching = true
       try {
         val inCurrent = libraryUrl.openStream()
@@ -329,6 +328,8 @@ object LuaStateFactory {
       case ex: SecurityException => null
     }
 
+	//OpenComputers.log.info(s"arch = '$OS_ARCH'")
+
     val IS_OS_ARM = isOSArchMatch("arm")
 
     val IS_OS_X86 = isOSArchMatch("x86") || isOSArchMatch("i386")
@@ -340,4 +341,16 @@ object LuaStateFactory {
     private def isOSArchMatch(archPrefix: String): Boolean = OS_ARCH != null && OS_ARCH.startsWith(archPrefix)
   }
 
+	object OS {
+		val name = try System.getProperty("os.name") catch {
+			case e: SecurityException => null
+		}
+		val version = try System.getProperty("os.version") catch {
+			case e: SecurityException => null
+		}
+
+		//OpenComputers.log.info(s"name = '$name', version = '$version'")
+
+		val IS_OS_SOLARIS = name.equals("SunOS") && version.startsWith("5.")
+	}
 }
