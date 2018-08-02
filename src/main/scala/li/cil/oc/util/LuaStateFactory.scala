@@ -34,24 +34,28 @@ object LuaStateFactory {
 
   private var currentLib = ""
 
-  private val libraryName = {
-    if (!Strings.isNullOrEmpty(Settings.get.forceNativeLib)) Settings.get.forceNativeLib
+	private val libraryName = {
+		if (!Strings.isNullOrEmpty(Settings.get.forceNativeLib)) Settings.get.forceNativeLib
 
-    else if (SystemUtils.IS_OS_FREE_BSD && Architecture.IS_OS_X64) "native.64.bsd.so"
-    else if (SystemUtils.IS_OS_FREE_BSD && Architecture.IS_OS_X86) "native.32.bsd.so"
+		else if (SystemUtils.IS_OS_FREE_BSD && Architecture.IS_OS_X64) "native.amd64-freebsd.so"
+		else if (SystemUtils.IS_OS_FREE_BSD && Architecture.IS_OS_X86) "native.i386-freebsd.so"
 
-    else if (SystemUtils.IS_OS_LINUX && Architecture.IS_OS_ARM) "native.32.arm.so"
-    else if (SystemUtils.IS_OS_LINUX && Architecture.IS_OS_X64) "native.64.so"
-    else if (SystemUtils.IS_OS_LINUX && Architecture.IS_OS_X86) "native.32.so"
+		else if (SystemUtils.IS_OS_LINUX && Architecture.IS_OS_ARM) "native.arm-linux-gnueabi.so"
+		else if (SystemUtils.IS_OS_LINUX && Architecture.IS_OS_X64) "native.amd64-linux-gnu.so"
+		else if (SystemUtils.IS_OS_LINUX && Architecture.IS_OS_X86) "native.i386-linux-gnu.so"
 
-    else if (SystemUtils.IS_OS_MAC && Architecture.IS_OS_X64) "native.64.dylib"
-    else if (SystemUtils.IS_OS_MAC && Architecture.IS_OS_X86) "native.32.dylib"
+		else if(SystemUtils.IS_OS_SOLARIS && Architecture.IS_OS_X86) "native.i386-solaris.so"
+		else if(SystemUtils.IS_OS_SOLARIS && Architecture.IS_OS_X64) "native.amd64-solaris.so"
+		else if(SystemUtils.IS_OS_SOLARIS && Architecture.IS_OS_SPARC64) "native.sparc64-solaris.so"
 
-    else if (SystemUtils.IS_OS_WINDOWS && Architecture.IS_OS_X64) "native.64.dll"
-    else if (SystemUtils.IS_OS_WINDOWS && Architecture.IS_OS_X86) "native.32.dll"
+		else if (SystemUtils.IS_OS_MAC && Architecture.IS_OS_X64) "native.amd64-apple-darwin.dylib"
+		else if (SystemUtils.IS_OS_MAC && Architecture.IS_OS_X86) "native.i386-apple-darwin.dylib"
 
-    else null
-  }
+		//else if (SystemUtils.IS_OS_WINDOWS && Architecture.IS_OS_X64) "native.64.dll"
+		//else if (SystemUtils.IS_OS_WINDOWS && Architecture.IS_OS_X86) "native.32.dll"
+
+		else null
+	}
 
   def isAvailable = haveNativeLibrary
 
@@ -76,6 +80,7 @@ object LuaStateFactory {
   // shared libraries somewhere so that we can load them, because we cannot
   // load them directly from a JAR.
   def init() {
+      OpenComputers.log.info(s"libraryName = '${libraryName}'")
     if (libraryName == null) {
       return
     }
@@ -107,10 +112,12 @@ object LuaStateFactory {
     }
     else ""
     val tmpLibFile = new File(tmpBasePath + tmpLibName)
+    OpenComputers.log.info(s"temp file: '${tmpLibFile.getName}'.")
 
     // If the file, already exists, make sure it's the same we need, if it's
     // not disable use of the natives.
     if (tmpLibFile.exists()) {
+      OpenComputers.log.info("temp file exists")
       var matching = true
       try {
         val inCurrent = libraryUrl.openStream()
@@ -153,6 +160,7 @@ object LuaStateFactory {
 
     // Copy the file contents to the temporary file.
     try {
+      OpenComputers.log.info("copying library to temp file")
       val in = Channels.newChannel(libraryUrl.openStream())
       try {
         val out = new FileOutputStream(tmpLibFile).getChannel
@@ -178,10 +186,14 @@ object LuaStateFactory {
       // will fail. We still want to try each time, since the files may have
       // been updated.
       // Alternatively, the file could not be opened for reading/writing.
-      case t: Throwable => // Nothing.
+      //case t: Throwable => // Nothing.
+      case t: Throwable =>
+        OpenComputers.log.trace(s"Could not copy native library to '${tmpLibFile.getName}'.", t)
+      OpenComputers.log.warn("exception on copy library")
     }
     // Try to load the lib.
     currentLib = tmpLibFile.getAbsolutePath
+    OpenComputers.log.info(s"currentLib = $currentLib")
     try {
       new jnlua.LuaState().close()
       OpenComputers.log.info(s"Found a compatible native library: '${tmpLibFile.getName}'.")
@@ -191,11 +203,13 @@ object LuaStateFactory {
       case t: Throwable =>
         if (Settings.get.logFullLibLoadErrors) {
           OpenComputers.log.trace(s"Could not load native library '${tmpLibFile.getName}'.", t)
+		OpenComputers.log.warn(t)
         }
         else {
           OpenComputers.log.trace(s"Could not load native library '${tmpLibFile.getName}'.")
         }
         tmpLibFile.delete()
+      OpenComputers.log.warn("exception on load library")
     }
   }
 
@@ -203,6 +217,7 @@ object LuaStateFactory {
 
   if (!haveNativeLibrary) {
     OpenComputers.log.warn("Unsupported platform, you won't be able to host games with persistent computers.")
+    OpenComputers.log.info(s"libraryName = '$libraryName'")
   }
 
   // ----------------------------------------------------------------------- //
@@ -322,6 +337,8 @@ object LuaStateFactory {
     val IS_OS_X86 = isOSArchMatch("x86") || isOSArchMatch("i386")
 
     val IS_OS_X64 = isOSArchMatch("x86_64") || isOSArchMatch("amd64")
+
+		val IS_OS_SPARC64 = isOSArchMatch("sparcv9")
 
     private def isOSArchMatch(archPrefix: String): Boolean = OS_ARCH != null && OS_ARCH.startsWith(archPrefix)
   }
