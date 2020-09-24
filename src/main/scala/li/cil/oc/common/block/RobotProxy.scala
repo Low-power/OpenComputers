@@ -4,6 +4,7 @@ import java.util
 
 import cpw.mods.fml.relauncher.Side
 import cpw.mods.fml.relauncher.SideOnly
+import li.cil.oc.Constants
 import li.cil.oc.OpenComputers
 import li.cil.oc.Settings
 import li.cil.oc.api
@@ -166,11 +167,11 @@ class RobotProxy extends RedstoneAware with traits.SpecialBlock with traits.Stat
 
   private def gettingDropsForActualDrop = new Exception().getStackTrace.exists(element => getDropForRealDropCallers.contains(element.getClassName + "." + element.getMethodName))
 
-  override def intersect(world: World, x: Int, y: Int, z: Int, origin: Vec3, direction: Vec3) = {
+  override def intersect(world: World, x: Int, y: Int, z: Int, start: Vec3, end: Vec3) = {
     val bounds = getCollisionBoundingBoxFromPool(world, x, y, z)
     world.getTileEntity(x, y, z) match {
-      case proxy: tileentity.RobotProxy if proxy.robot.animationTicksLeft <= 0 && bounds.isVecInside(origin) => null
-      case _ => super.intersect(world, x, y, z, origin, direction)
+      case proxy: tileentity.RobotProxy if proxy.robot.animationTicksLeft <= 0 && bounds.isVecInside(start) => null
+      case _ => super.intersect(world, x, y, z, start, end)
     }
   }
 
@@ -209,10 +210,10 @@ class RobotProxy extends RedstoneAware with traits.SpecialBlock with traits.Stat
       }
       true
     }
-    else if (player.getCurrentEquippedItem == null) {
+    else if (player.getHeldItem == null) {
       if (!world.isRemote) {
         world.getTileEntity(x, y, z) match {
-          case proxy: tileentity.RobotProxy if !proxy.machine.isRunning => proxy.machine.start()
+          case proxy: tileentity.RobotProxy if !proxy.machine.isRunning && proxy.isUseableByPlayer(player) => proxy.machine.start()
           case _ =>
         }
       }
@@ -255,7 +256,7 @@ class RobotProxy extends RedstoneAware with traits.SpecialBlock with traits.Stat
           robot.saveComponents()
           dropBlockAsItem(world, x, y, z, robot.info.createItemStack())
         }
-        if (world.getBlock(robot.moveFromX, robot.moveFromY, robot.moveFromZ) == api.Items.get("robotAfterimage").block) {
+        if (world.getBlock(robot.moveFromX, robot.moveFromY, robot.moveFromZ) == api.Items.get(Constants.BlockName.RobotAfterimage).block) {
           world.setBlock(robot.moveFromX, robot.moveFromY, robot.moveFromZ, net.minecraft.init.Blocks.air, 0, 1)
         }
       case _ =>

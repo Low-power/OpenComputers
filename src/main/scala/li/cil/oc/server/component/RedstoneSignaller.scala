@@ -15,6 +15,8 @@ trait RedstoneSignaller extends prefab.ManagedEnvironment {
 
   var wakeThreshold = 0
 
+  var wakeNeighborsOnly = true
+
   // ----------------------------------------------------------------------- //
 
   @Callback(direct = true, doc = """function():number -- Get the current wake-up threshold.""")
@@ -30,9 +32,12 @@ trait RedstoneSignaller extends prefab.ManagedEnvironment {
   // ----------------------------------------------------------------------- //
 
   def onRedstoneChanged(side: AnyRef, oldMaxValue: Int, newMaxValue: Int): Unit = {
-    node.sendToReachable("computer.signal", "redstone_changed", side, int2Integer(oldMaxValue), int2Integer(newMaxValue))
+    node.sendToReachable("computer.signal", "redstone_changed", side, Int.box(oldMaxValue), Int.box(newMaxValue))
     if (oldMaxValue < wakeThreshold && newMaxValue >= wakeThreshold) {
-      node.sendToNeighbors("computer.start")
+      if (wakeNeighborsOnly)
+        node.sendToNeighbors("computer.start")
+      else
+        node.sendToReachable("computer.start")
     }
   }
 

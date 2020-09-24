@@ -33,9 +33,13 @@ object ObfNames {
   final val Method_writeToNBT = Array("writeToNBT", "func_145841_b")
 }
 
+object ClassTransformer {
+  var hadErrors = false
+  var hadSimpleComponentErrors = false
+}
+
 class ClassTransformer extends IClassTransformer {
   private val loader = classOf[ClassTransformer].getClassLoader.asInstanceOf[LaunchClassLoader]
-
   private val log = LogManager.getLogger("OpenComputers")
 
   override def transform(name: String, transformedName: String, basicClass: Array[Byte]): Array[Byte] = {
@@ -73,7 +77,7 @@ class ClassTransformer extends IClassTransformer {
           // Inject available interfaces where requested.
           if (classNode.visibleAnnotations != null) {
             def injectInterface(annotation: AnnotationNode): Unit = {
-              val values = annotation.values.grouped(2).map(buffer => buffer(0) -> buffer(1)).toMap
+              val values = annotation.values.grouped(2).map(buffer => buffer.head -> buffer.last).toMap
               (values.get("value"), values.get("modid")) match {
                 case (Some(interfaceName: String), Some(modid: String)) =>
                   Mods.All.find(_.id == modid) match {
@@ -93,6 +97,7 @@ class ClassTransformer extends IClassTransformer {
                           else {
                             log.warn(s"Missing implementations for interface $interfaceName, skipping injection.")
                             missing.foreach(log.warn)
+                            ClassTransformer.hadErrors = true
                           }
                         }
                       }
@@ -102,6 +107,7 @@ class ClassTransformer extends IClassTransformer {
                       }
                     case _ =>
                       log.warn(s"Skipping interface $interfaceName from unknown mod $modid.")
+                      ClassTransformer.hadErrors = true
                   }
                 case _ =>
               }
@@ -113,7 +119,7 @@ class ClassTransformer extends IClassTransformer {
             }
             classNode.visibleAnnotations.find(_.desc == "Lli/cil/oc/common/asm/Injectable$InterfaceList;") match {
               case Some(annotation) =>
-                val values = annotation.values.grouped(2).map(buffer => buffer(0) -> buffer(1)).toMap
+                val values = annotation.values.grouped(2).map(buffer => buffer.head -> buffer.last).toMap
                 values.get("value") match {
                   case Some(interfaceList: java.lang.Iterable[AnnotationNode]@unchecked) =>
                     interfaceList.foreach(injectInterface)
@@ -127,7 +133,9 @@ class ClassTransformer extends IClassTransformer {
         }
         {
           val classNode = newClassNode(transformedClass)
-          if (classNode.interfaces.contains("li/cil/oc/api/network/SimpleComponent")) {
+          if (classNode.interfaces.contains("li/cil/oc/api/network/SimpleComponent") &&
+            (classNode.visibleAnnotations == null || !classNode.visibleAnnotations.
+              exists(annotation => annotation != null && annotation.desc == "Lli/cil/oc/api/network/SimpleComponent$SkipInjection;"))) {
             try {
               transformedClass = injectEnvironmentImplementation(classNode)
               log.info(s"Successfully injected component logic into class $name.")
@@ -135,6 +143,7 @@ class ClassTransformer extends IClassTransformer {
             catch {
               case e: Throwable =>
                 log.warn(s"Failed injecting component logic into class $name.", e)
+                ClassTransformer.hadSimpleComponentErrors = true
             }
           }
         }
@@ -198,11 +207,11 @@ class ClassTransformer extends IClassTransformer {
             toInject.add(new TypeInsnNode(Opcodes.INSTANCEOF, "li/cil/oc/common/entity/Drone"))
             val skip = new LabelNode()
             toInject.add(new JumpInsnNode(Opcodes.IFEQ, skip))
-            toInject.add(new LdcInsnNode(double2Double(0.0)))
+            toInject.add(new LdcInsnNode(Double.box(0.0)))
             toInject.add(new VarInsnNode(Opcodes.DSTORE, 16))
-            toInject.add(new LdcInsnNode(double2Double(0.0)))
+            toInject.add(new LdcInsnNode(Double.box(0.0)))
             toInject.add(new VarInsnNode(Opcodes.DSTORE, 18))
-            toInject.add(new LdcInsnNode(double2Double(-0.75)))
+            toInject.add(new LdcInsnNode(Double.box(-0.75)))
             toInject.add(new VarInsnNode(Opcodes.DSTORE, 20))
             toInject.add(skip)
             instructions.insertBefore(varNode, toInject)
@@ -220,6 +229,7 @@ class ClassTransformer extends IClassTransformer {
     catch {
       case t: Throwable =>
         log.warn("Something went wrong!", t)
+        ClassTransformer.hadErrors = true
         basicClass
     }
   }
@@ -233,10 +243,12 @@ class ClassTransformer extends IClassTransformer {
         }
         else {
           log.warn(s"Failed patching ${classNode.name}.${methodNames(0)}, injection point not found.")
+          ClassTransformer.hadErrors = true
           None
         }
       case _ =>
         log.warn(s"Failed patching ${classNode.name}.${methodNames(0)}, method not found.")
+        ClassTransformer.hadErrors = true
         None
     }
   }
@@ -338,7 +350,7 @@ class ClassTransformer extends IClassTransformer {
     writeClass(classNode, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES)
   }
 
-  def isTileEntity(classNode: ClassNode): Boolean = {
+  @tailrec final def isTileEntity(classNode: ClassNode): Boolean = {
     if (classNode == null) false
     else {
       log.trace(s"Checking if class ${classNode.name} is a TileEntity...")
@@ -346,6 +358,18 @@ class ClassTransformer extends IClassTransformer {
         (classNode.superName != null && isTileEntity(classNodeFor(classNode.superName)))
     }
   }
+
+  @tailrec final def isAssignable(parent: ClassNode, child: ClassNode): Boolean = parent != null && child != null && !isFinal(parent) && {
+    parent.name == "java/lang/Object" ||
+      parent.name == child.name ||
+      parent.name == child.superName ||
+      child.interfaces.contains(parent.name) ||
+      (child.superName != null && isAssignable(parent, classNodeFor(child.superName)))
+  }
+
+  def isFinal(node: ClassNode): Boolean = (node.access & Opcodes.ACC_FINAL) != 0
+
+  def isInterface(node: ClassNode): Boolean = node != null && (node.access & Opcodes.ACC_INTERFACE) != 0
 
   def classNodeFor(name: String) = {
     val namePlain = name.replace('/', '.')
@@ -366,7 +390,23 @@ class ClassTransformer extends IClassTransformer {
   }
 
   def writeClass(classNode: ClassNode, flags: Int = ClassWriter.COMPUTE_MAXS) = {
-    val writer = new ClassWriter(flags)
+    val writer = new ClassWriter(flags) {
+      // Implementation without class loads, avoids https://github.com/MinecraftForge/FML/issues/655
+      override def getCommonSuperClass(type1: String, type2: String): String = {
+        val node1 = classNodeFor(type1)
+        val node2 = classNodeFor(type2)
+        if (isAssignable(node1, node2)) node1.name
+        else if (isAssignable(node2, node1)) node2.name
+        else if (isInterface(node1) || isInterface(node2)) "java/lang/Object"
+        else {
+          var parent = Option(node1).map(_.superName).map(classNodeFor).orNull
+          while (parent != null && parent.superName != null && !isAssignable(parent, node2)) {
+            parent = classNodeFor(parent.superName)
+          }
+          if (parent == null) "java/lang/Object" else parent.name
+        }
+      }
+    }
     classNode.accept(writer)
     writer.toByteArray
   }

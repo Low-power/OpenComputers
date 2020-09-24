@@ -2,6 +2,7 @@ package li.cil.oc.common.block
 
 import java.util
 
+import li.cil.oc.Constants
 import li.cil.oc.Settings
 import li.cil.oc.api
 import li.cil.oc.client.KeyBindings
@@ -82,7 +83,7 @@ class Microcontroller(protected implicit val tileTag: ClassTag[tileentity.Microc
         }
         true
       }
-      else if (api.Items.get(player.getHeldItem) == api.Items.get("eeprom")) {
+      else if (api.Items.get(player.getHeldItem) == api.Items.get(Constants.ItemName.EEPROM)) {
         if (!world.isRemote) {
           world.getTileEntity(x, y, z) match {
             case mcu: tileentity.Microcontroller =>
@@ -102,8 +103,10 @@ class Microcontroller(protected implicit val tileTag: ClassTag[tileentity.Microc
 
   override protected def doCustomInit(tileEntity: tileentity.Microcontroller, player: EntityLivingBase, stack: ItemStack): Unit = {
     super.doCustomInit(tileEntity, player, stack)
-    tileEntity.info.load(stack)
-    tileEntity.snooperNode.changeBuffer(tileEntity.info.storedEnergy - tileEntity.snooperNode.localBuffer)
+    if (!tileEntity.world.isRemote) {
+      tileEntity.info.load(stack)
+      tileEntity.snooperNode.changeBuffer(tileEntity.info.storedEnergy - tileEntity.snooperNode.localBuffer)
+    }
   }
 
   override protected def doCustomDrops(tileEntity: tileentity.Microcontroller, player: EntityPlayer, willHarvest: Boolean): Unit = {

@@ -81,7 +81,7 @@ trait VirtualFileSystem extends OutputStreamFileSystem {
   }
 
   override def rename(from: String, to: String) =
-    if (from == "" || !exists(from)) throw new FileNotFoundException()
+    if (from == "" || !exists(from)) throw new FileNotFoundException(from)
     else if (!exists(to)) {
       val segmentsTo = segments(to)
       root.get(segmentsTo.dropRight(1)) match {
@@ -149,7 +149,7 @@ trait VirtualFileSystem extends OutputStreamFileSystem {
 
   // ----------------------------------------------------------------------- //
 
-  protected def segments(path: String) = path.split("/").filter(_ != "")
+  protected def segments(path: String) = FileSystem.validatePath(path).split("/").filter(_ != "")
 
   // ----------------------------------------------------------------------- //
 
@@ -364,7 +364,7 @@ trait VirtualFileSystem extends OutputStreamFileSystem {
       if (!isClosed) {
         val pos = position.toInt
         file.data.insertAll(file.data.length, Seq.fill[Byte]((pos + b.length) - file.data.length)(0))
-        for (i <- 0 until b.length) {
+        for (i <- b.indices) {
           file.data(pos + i) = b(i)
         }
         position += b.length

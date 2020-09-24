@@ -1,6 +1,9 @@
 package li.cil.oc
 
 import cpw.mods.fml.common.event.FMLFingerprintViolationEvent
+import li.cil.oc.client.CommandHandler.SetClipboardCommand
+import net.minecraft.event.ClickEvent
+import net.minecraft.event.HoverEvent
 import net.minecraft.util.ChatComponentText
 import net.minecraft.util.ChatComponentTranslation
 import net.minecraft.util.StatCollector
@@ -23,7 +26,12 @@ object Localization {
   def localizeImmediately(key: String) = StatCollector.translateToLocal(resolveKey(key)).split(nl).map(_.trim).mkString("\n")
 
   object Analyzer {
-    def Address(value: String) = localizeLater("gui.Analyzer.Address", value)
+    def Address(value: String) = {
+      val result = localizeLater("gui.Analyzer.Address", value)
+      result.getChatStyle.setChatClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, s"/${SetClipboardCommand.name} $value"))
+      result.getChatStyle.setChatHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, localizeLater("gui.Analyzer.CopyToClipboard")))
+      result
+    }
 
     def AddressCopied = localizeLater("gui.Analyzer.AddressCopied")
 
@@ -83,7 +91,17 @@ object Localization {
 
     def WarningFingerprint(event: FMLFingerprintViolationEvent) = new ChatComponentText("§aOpenComputers§f: ").appendSibling(localizeLater("gui.Chat.WarningFingerprint", event.expectedFingerprint, event.fingerprints.toArray.mkString(", ")))
 
+    def WarningRecipes = new ChatComponentText("§aOpenComputers§f: ").appendSibling(localizeLater("gui.Chat.WarningRecipes"))
+
+    def WarningClassTransformer = new ChatComponentText("§aOpenComputers§f: ").appendSibling(localizeLater("gui.Chat.WarningClassTransformer"))
+
+    def WarningSimpleComponent = new ChatComponentText("§aOpenComputers§f: ").appendSibling(localizeLater("gui.Chat.WarningSimpleComponent"))
+
+    def WarningLink(url: String) = new ChatComponentText("§aOpenComputers§f: ").appendSibling(localizeLater("gui.Chat.WarningLink", url))
+
     def InfoNewVersion(version: String) = new ChatComponentText("§aOpenComputers§f: ").appendSibling(localizeLater("gui.Chat.NewVersion", version))
+
+    def TextureName(name: String) = new ChatComponentText("§aOpenComputers§f: ").appendSibling(localizeLater("gui.Chat.TextureName", name))
   }
 
   object Computer {
@@ -94,28 +112,34 @@ object Localization {
     def Power = localizeImmediately("gui.Robot.Power")
   }
 
+  object Drive {
+    def Managed = localizeImmediately("gui.Drive.Managed")
+
+    def Unmanaged = localizeImmediately("gui.Drive.Unmanaged")
+
+    def Warning = localizeImmediately("gui.Drive.Warning")
+  }
+
   object Raid {
     def Warning = localizeImmediately("gui.Raid.Warning")
   }
 
-  object ServerRack {
-    def Top = localizeImmediately("gui.ServerRack.Top")
+  object Rack {
+    def Top = localizeImmediately("gui.Rack.Top")
 
-    def Bottom = localizeImmediately("gui.ServerRack.Bottom")
+    def Bottom = localizeImmediately("gui.Rack.Bottom")
 
-    def Left = localizeImmediately("gui.ServerRack.Left")
+    def Left = localizeImmediately("gui.Rack.Left")
 
-    def Right = localizeImmediately("gui.ServerRack.Right")
+    def Right = localizeImmediately("gui.Rack.Right")
 
-    def Back = localizeImmediately("gui.ServerRack.Back")
+    def Back = localizeImmediately("gui.Rack.Back")
 
-    def None = localizeImmediately("gui.ServerRack.None")
+    def None = localizeImmediately("gui.Rack.None")
 
-    def SwitchExternal = localizeImmediately("gui.ServerRack.SwitchExternal")
+    def RelayEnabled = localizeImmediately("gui.Rack.Enabled")
 
-    def SwitchInternal = localizeImmediately("gui.ServerRack.SwitchInternal")
-
-    def WirelessRange = localizeImmediately("gui.ServerRack.WirelessRange")
+    def RelayDisabled = localizeImmediately("gui.Rack.Disabled")
   }
 
   object Switch {
@@ -133,9 +157,21 @@ object Localization {
   }
 
   object Tooltip {
+    def DiskUsage(used: Long, capacity: Long) = localizeImmediately("tooltip.DiskUsage", used.toString, capacity.toString)
+
+    def DiskMode(isUnmanaged: Boolean) = localizeImmediately(if (isUnmanaged) "tooltip.DiskModeUnmanaged" else "tooltip.DiskModeManaged")
+
     def Materials = localizeImmediately("tooltip.Materials")
 
     def Tier(tier: Int) = localizeImmediately("tooltip.Tier", tier.toString)
+
+    def PrintBeaconBase = localizeImmediately("tooltip.Print.BeaconBase")
+
+    def PrintLightValue(level: Int) = localizeImmediately("tooltip.Print.LightValue", level.toString)
+
+    def PrintRedstoneLevel(level: Int) = localizeImmediately("tooltip.Print.RedstoneLevel", level.toString)
+
+    def MFULinked(isLinked: Boolean) = localizeImmediately(if (isLinked) "tooltip.UpgradeMF.Linked" else "tooltip.UpgradeMF.Unlinked")
   }
 
 }

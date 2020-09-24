@@ -1,6 +1,5 @@
 package li.cil.oc.server.machine
 
-import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 
@@ -10,6 +9,7 @@ import li.cil.oc.api.driver.NamedBlock
 import li.cil.oc.api.machine
 import li.cil.oc.api.machine.Arguments
 import li.cil.oc.api.machine.Context
+import li.cil.oc.api.network.FilteredEnvironment
 import li.cil.oc.api.network.ManagedPeripheral
 import li.cil.oc.server.driver.CompoundBlockEnvironment
 
@@ -22,7 +22,14 @@ object Callbacks {
   def apply(host: Any) = host match {
     case multi: CompoundBlockEnvironment => dynamicAnalyze(host)
     case peripheral: ManagedPeripheral => dynamicAnalyze(host)
+    case filtered: FilteredEnvironment => dynamicAnalyze(host)
     case _ => cache.getOrElseUpdate(host.getClass, dynamicAnalyze(host))
+  }
+
+  // Clear the cache; used when world is unloaded, mostly to allow reacting to
+  // stuff (aka configs) that may influence which @Callbacks are enabled.
+  def clear(): Unit = {
+    cache.clear()
   }
 
   def fromClass(environment: Class[_]) = staticAnalyze(environment)
@@ -45,16 +52,20 @@ object Callbacks {
         case named: NamedBlock => named.priority
         case _ => 0
       }
+      val filter = environment match {
+        case filtered: FilteredEnvironment => (s: String) => shouldAdd(s) && filtered.isCallbackEnabled(s)
+        case _ => shouldAdd _
+      }
       environment match {
         case peripheral: ManagedPeripheral =>
           (priority, () => {
-            for (name <- peripheral.methods() if shouldAdd(name)) {
+            for (name <- peripheral.methods() if filter(name)) {
               callbacks += name -> new PeripheralCallback(name)
             }
-            staticAnalyze(environment.getClass, Option(shouldAdd), Option(callbacks))
+            staticAnalyze(environment.getClass, Option(filter), Option(callbacks))
           })
         case _ =>
-          (priority, () => staticAnalyze(environment.getClass, Option(shouldAdd), Option(callbacks)))
+          (priority, () => staticAnalyze(environment.getClass, Option(filter), Option(callbacks)))
       }
     }
 
@@ -63,7 +74,7 @@ object Callbacks {
     (host match {
       case multi: CompoundBlockEnvironment => multi.environments.map(env => process(env._2))
       case single => Seq(process(single))
-    }).sortBy(-_._1).map(_._2).foreach(_())
+    }).sortBy(-_._1).map(_._2).foreach(_ ())
 
     callbacks.toMap
   }
@@ -89,7 +100,7 @@ object Callbacks {
         else {
           val a = m.getAnnotation[machine.Callback](classOf[machine.Callback])
           val name = if (a.value != null && a.value.trim != "") a.value else m.getName
-          if (shouldAdd.fold(true)(_(name))) {
+          if (shouldAdd.fold(true)(_ (name))) {
             callbacks += name -> new ComponentCallback(m, a)
           }
         }
@@ -107,11 +118,9 @@ object Callbacks {
   }
 
   class ComponentCallback(val method: Method, annotation: machine.Callback) extends Callback(annotation) {
-    override def apply(instance: AnyRef, context: Context, args: Arguments) = try {
-      method.invoke(instance, context, args).asInstanceOf[Array[AnyRef]]
-    } catch {
-      case e: InvocationTargetException => throw e.getCause
-    }
+    final val callWrapper = CallbackWrapper.createCallbackWrapper(method)
+
+    override def apply(instance: AnyRef, context: Context, args: Arguments) = callWrapper.call(instance, context, args)
   }
 
   class PeripheralCallback(name: String) extends Callback(new PeripheralAnnotation(name)) {

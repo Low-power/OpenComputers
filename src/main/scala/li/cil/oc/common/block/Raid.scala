@@ -55,25 +55,29 @@ class Raid(protected implicit val tileTag: ClassTag[tileentity.Raid]) extends Si
 
   override protected def doCustomInit(tileEntity: tileentity.Raid, player: EntityLivingBase, stack: ItemStack): Unit = {
     super.doCustomInit(tileEntity, player, stack)
-    val data = new RaidData(stack)
-    for (i <- 0 until math.min(data.disks.length, tileEntity.getSizeInventory)) {
-      tileEntity.setInventorySlotContents(i, data.disks(i))
-    }
-    data.label.foreach(tileEntity.label.setLabel)
-    if (!data.filesystem.hasNoTags) {
-      tileEntity.tryCreateRaid(data.filesystem.getCompoundTag("node").getString("address"))
-      tileEntity.filesystem.foreach(_.load(data.filesystem))
+    if (!tileEntity.world.isRemote) {
+      val data = new RaidData(stack)
+      for (i <- 0 until math.min(data.disks.length, tileEntity.getSizeInventory)) {
+        tileEntity.setInventorySlotContents(i, data.disks(i))
+      }
+      data.label.foreach(tileEntity.label.setLabel)
+      if (!data.filesystem.hasNoTags) {
+        tileEntity.tryCreateRaid(data.filesystem.getCompoundTag("node").getString("address"))
+        tileEntity.filesystem.foreach(_.load(data.filesystem))
+      }
     }
   }
 
   override protected def doCustomDrops(tileEntity: tileentity.Raid, player: EntityPlayer, willHarvest: Boolean): Unit = {
     super.doCustomDrops(tileEntity, player, willHarvest)
     val stack = createItemStack()
-    val data = new RaidData()
-    data.disks = tileEntity.items.map(_.orNull)
-    tileEntity.filesystem.foreach(_.save(data.filesystem))
-    data.label = Option(tileEntity.label.getLabel)
-    data.save(stack)
+    if (tileEntity.items.exists(_.isDefined)) {
+      val data = new RaidData()
+      data.disks = tileEntity.items.map(_.orNull)
+      tileEntity.filesystem.foreach(_.save(data.filesystem))
+      data.label = Option(tileEntity.label.getLabel)
+      data.save(stack)
+    }
     dropBlockAsItem(tileEntity.world, tileEntity.x, tileEntity.y, tileEntity.z, stack)
   }
 }

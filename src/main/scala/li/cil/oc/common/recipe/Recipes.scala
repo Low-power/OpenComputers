@@ -7,19 +7,23 @@ import com.typesafe.config._
 import cpw.mods.fml.common.Loader
 import cpw.mods.fml.common.registry.GameRegistry
 import li.cil.oc._
+import li.cil.oc.common.Loot
 import li.cil.oc.common.block.SimpleBlock
 import li.cil.oc.common.init.Items
-import li.cil.oc.common.item.SimpleItem
-import li.cil.oc.integration.Mods
+import li.cil.oc.common.item.Delegator
+import li.cil.oc.common.item.data.PrintData
+import li.cil.oc.common.item.traits.Delegate
+import li.cil.oc.common.item.traits.SimpleItem
 import li.cil.oc.integration.util.NEI
 import li.cil.oc.util.Color
 import net.minecraft.block.Block
 import net.minecraft.item.Item
 import net.minecraft.item.ItemBlock
 import net.minecraft.item.ItemStack
-import net.minecraft.item.crafting.FurnaceRecipes
 import net.minecraft.nbt.NBTTagCompound
 import net.minecraft.util.RegistryNamespaced
+import net.minecraftforge.fluids.FluidRegistry
+import net.minecraftforge.fluids.FluidStack
 import net.minecraftforge.oredict.OreDictionary
 import net.minecraftforge.oredict.RecipeSorter
 import net.minecraftforge.oredict.RecipeSorter.Category
@@ -31,40 +35,53 @@ import scala.collection.mutable
 object Recipes {
   val list = mutable.LinkedHashMap.empty[ItemStack, String]
   val oreDictEntries = mutable.LinkedHashMap.empty[String, ItemStack]
+  var hadErrors = false
+  val recipeHandlers = mutable.LinkedHashMap.empty[String, (ItemStack, Config) => Unit]
 
-  def addBlock(instance: Block, name: String, oreDict: String = null) = {
+  def registerRecipeHandler(name: String, recipe: (ItemStack, Config) => Unit): Unit = {
+    recipeHandlers += name -> recipe
+  }
+
+  def addBlock(instance: Block, name: String, oreDict: String*) = {
     Items.registerBlock(instance, name)
     addRecipe(new ItemStack(instance), name)
-    register(oreDict, instance match {
+    register(instance match {
       case simple: SimpleBlock => simple.createItemStack()
       case _ => new ItemStack(instance)
-    })
+    }, oreDict: _*)
     instance
   }
 
-  def addMultiItem[T <: common.item.Delegate](delegate: T, name: String, oreDict: String = null) = {
+  def addSubItem[T <: Delegate](delegate: T, name: String, oreDict: String*) = {
     Items.registerItem(delegate, name)
     addRecipe(delegate.createItemStack(), name)
-    register(oreDict, delegate.createItemStack())
+    register(delegate.createItemStack(), oreDict: _*)
     delegate
   }
 
-  def addItem(instance: Item, name: String, oreDict: String = null) = {
+  def addItem(instance: Item, name: String, oreDict: String*) = {
     Items.registerItem(instance, name)
     addRecipe(new ItemStack(instance), name)
-    register(oreDict, instance match {
+    register(instance match {
       case simple: SimpleItem => simple.createItemStack()
       case _ => new ItemStack(instance)
-    })
+    }, oreDict: _*)
     instance
+  }
+
+  def addStack(stack: ItemStack, name: String, oreDict: String*) = {
+    Items.registerStack(stack, name)
+    addRecipe(stack, name)
+    register(stack, oreDict: _*)
+    stack
   }
 
   def addRecipe(stack: ItemStack, name: String) {
     list += stack -> name
   }
 
-  private def register(name: String, item: ItemStack) {
-    if (name != null) {
+  private def register(item: ItemStack, names: String*) {
+    for (name <- names if name != null) {
       oreDictEntries += name -> item
     }
   }
@@ -72,6 +89,9 @@ object Recipes {
   def init() {
     RecipeSorter.register(Settings.namespace + "extshaped", classOf[ExtendedShapedOreRecipe], Category.SHAPED, "after:forge:shapedore")
     RecipeSorter.register(Settings.namespace + "extshapeless", classOf[ExtendedShapelessOreRecipe], Category.SHAPELESS, "after:forge:shapelessore")
+    RecipeSorter.register(Settings.namespace + "colorizer", classOf[ColorizeRecipe], Category.SHAPELESS, "after:forge:shapelessore")
+    RecipeSorter.register(Settings.namespace + "decolorizer", classOf[DecolorizeRecipe], Category.SHAPELESS, "after:oc:colorizer")
+    RecipeSorter.register(Settings.namespace + "lootcycler", classOf[LootDiskCyclingRecipe], Category.SHAPELESS, "after:forge:shapelessore")
 
     for ((name, stack) <- oreDictEntries) {
       if (!OreDictionary.getOres(name).contains(stack)) {
@@ -81,17 +101,15 @@ object Recipes {
     oreDictEntries.clear()
 
     try {
-      val defaultRecipes = new File(Loader.instance.getConfigDir + File.separator + "opencomputers" + File.separator + "default.recipes")
-      val hardmodeRecipes = new File(Loader.instance.getConfigDir + File.separator + "opencomputers" + File.separator + "hardmode.recipes")
-      val gregTechRecipes = new File(Loader.instance.getConfigDir + File.separator + "opencomputers" + File.separator + "gregtech.recipes")
-      val userRecipes = new File(Loader.instance.getConfigDir + File.separator + "opencomputers" + File.separator + "user.recipes")
-
-      defaultRecipes.getParentFile.mkdirs()
-      FileUtils.copyURLToFile(getClass.getResource("/assets/opencomputers/recipes/default.recipes"), defaultRecipes)
-      FileUtils.copyURLToFile(getClass.getResource("/assets/opencomputers/recipes/hardmode.recipes"), hardmodeRecipes)
-      FileUtils.copyURLToFile(getClass.getResource("/assets/opencomputers/recipes/gregtech.recipes"), gregTechRecipes)
+      val recipeSets = Array("default", "hardmode", "gregtech", "peaceful")
+      val recipeDirectory = new File(Loader.instance.getConfigDir + File.separator + "opencomputers")
+      val userRecipes = new File(recipeDirectory, "user.recipes")
+      userRecipes.getParentFile.mkdirs()
       if (!userRecipes.exists()) {
         FileUtils.copyURLToFile(getClass.getResource("/assets/opencomputers/recipes/user.recipes"), userRecipes)
+      }
+      for (recipeSet <- recipeSets) {
+        FileUtils.copyURLToFile(getClass.getResource(s"/assets/opencomputers/recipes/$recipeSet.recipes"), new File(recipeDirectory, s"$recipeSet.recipes"))
       }
       lazy val config: ConfigParseOptions = ConfigParseOptions.defaults.
         setSyntax(ConfigSyntax.CONF).
@@ -116,17 +134,82 @@ object Recipes {
 
       // Register all known recipes.
       for ((stack, name) <- list) {
-        addRecipe(stack, recipes, name)
+        if (recipes.hasPath(name)) {
+          val value = recipes.getValue(name)
+          value.valueType match {
+            case ConfigValueType.OBJECT =>
+              addRecipe(stack, recipes.getConfig(name), s"'$name'")
+            case ConfigValueType.BOOLEAN =>
+              // Explicitly disabled, keep in NEI if true.
+              if (!value.unwrapped.asInstanceOf[Boolean]) {
+                hide(stack)
+              }
+            case _ =>
+              OpenComputers.log.error(s"Failed adding recipe for '$name', you will not be able to craft this item. The error was: Invalid value for recipe.")
+              hadErrors = true
+          }
+        }
+        else {
+          OpenComputers.log.warn(s"No recipe for '$name', you will not be able to craft this item. To suppress this warning, disable the recipe (assign `false` to it).")
+          hadErrors = true
+        }
+      }
+
+      // Register all unknown recipes. Well. Loot disk recipes.
+      if (recipes.hasPath("lootDisks")) try {
+        val lootRecipes = recipes.getConfigList("lootDisks")
+        val lootStacks = Loot.globalDisks.map(_._1)
+        for (recipe <- lootRecipes) {
+          val name = recipe.getString("name")
+          lootStacks.find(s => s.getTagCompound.getString(Settings.namespace + "lootFactory") == name) match {
+            case Some(stack) => addRecipe(stack, recipe, s"loot disk '$name'")
+            case _ =>
+              OpenComputers.log.warn(s"Failed adding recipe for loot disk '$name': No such global loot disk.")
+              hadErrors = true
+          }
+        }
+      }
+      catch {
+        case t: Throwable =>
+          OpenComputers.log.warn("Failed parsing loot disk recipes.", t)
+          hadErrors = true
+      }
+
+      if (recipes.hasPath("generic")) try {
+        val genericRecipes = recipes.getConfigList("generic")
+        for (recipe <- genericRecipes) {
+          val result = recipe.getValue("result").unwrapped()
+          parseIngredient(result) match {
+            case stack: ItemStack => addRecipe(stack, recipe, s"'$result'")
+            case _ =>
+              OpenComputers.log.warn(s"Failed adding generic recipe for '$result': Invalid output (make sure it's not an OreDictionary name).")
+              hadErrors = true
+          }
+        }
+      }
+      catch {
+        case t: Throwable =>
+          OpenComputers.log.warn("Failed parsing generic recipes.", t)
+          hadErrors = true
       }
 
       // Recrafting operations.
-      val navigationUpgrade = api.Items.get("navigationUpgrade")
-      val mcu = api.Items.get("microcontroller")
-      val floppy = api.Items.get("floppy")
-      val drone = api.Items.get("drone")
-      val eeprom = api.Items.get("eeprom")
-      val robot = api.Items.get("robot")
-      val tablet = api.Items.get("tablet")
+      val accessPoint = api.Items.get(Constants.BlockName.AccessPoint)
+      val cable = api.Items.get(Constants.BlockName.Cable)
+      val chamelium = api.Items.get(Constants.ItemName.Chamelium)
+      val chameliumBlock = api.Items.get(Constants.BlockName.ChameliumBlock)
+      val drone = api.Items.get(Constants.ItemName.Drone)
+      val eeprom = api.Items.get(Constants.ItemName.EEPROM)
+      val floppy = api.Items.get(Constants.ItemName.Floppy)
+      val hoverBoots = api.Items.get(Constants.ItemName.HoverBoots)
+      val lootDisk = api.Items.get(Constants.ItemName.LootDisk)
+      val mcu = api.Items.get(Constants.BlockName.Microcontroller)
+      val navigationUpgrade = api.Items.get(Constants.ItemName.NavigationUpgrade)
+      val print = api.Items.get(Constants.BlockName.Print)
+      val relay = api.Items.get(Constants.BlockName.Relay)
+      val robot = api.Items.get(Constants.BlockName.Robot)
+      val switch = api.Items.get(Constants.BlockName.Switch)
+      val tablet = api.Items.get(Constants.ItemName.Tablet)
 
       // Navigation upgrade recrafting.
       GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(
@@ -166,6 +249,99 @@ object Recipes {
       GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(
         tablet.createItemStack(1),
         tablet.createItemStack(1), eeprom.createItemStack(1)))
+
+      // Chamelium block splitting.
+      GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(
+        chamelium.createItemStack(9),
+        chameliumBlock.createItemStack(1)))
+
+      // Chamelium dying.
+      for ((dye, meta) <- Color.dyes.zipWithIndex) {
+        val result = chameliumBlock.createItemStack(1)
+        result.setItemDamage(meta)
+        val input = chameliumBlock.createItemStack(1)
+        input.setItemDamage(OreDictionary.WILDCARD_VALUE)
+        GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(
+          result,
+          input, dye))
+      }
+
+      // Print beaconification.
+      val beaconPrint = print.createItemStack(1)
+
+      {
+        val printData = new PrintData(beaconPrint)
+        printData.isBeaconBase = true
+        printData.save(beaconPrint)
+      }
+
+      for (block <- Array(
+        net.minecraft.init.Blocks.iron_block,
+        net.minecraft.init.Blocks.gold_block,
+        net.minecraft.init.Blocks.emerald_block,
+        net.minecraft.init.Blocks.diamond_block
+      )) {
+        GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(
+          beaconPrint,
+          print.createItemStack(1), new ItemStack(block)))
+      }
+
+      // Floppy disk formatting.
+      GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(floppy.createItemStack(1), floppy.createItemStack(1)))
+      GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(floppy.createItemStack(1), lootDisk.createItemStack(1)))
+
+      // Hard disk formatting.
+      val hdds = Array(
+        api.Items.get(Constants.ItemName.HDDTier1),
+        api.Items.get(Constants.ItemName.HDDTier2),
+        api.Items.get(Constants.ItemName.HDDTier3)
+      )
+      for (hdd <- hdds) {
+        GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(hdd.createItemStack(1), hdd.createItemStack(1)))
+      }
+
+      // EEPROM formatting.
+      GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(eeprom.createItemStack(1), eeprom.createItemStack(1)))
+
+      // Print light value increments.
+      val lightPrint = print.createItemStack(1)
+
+      {
+        val printData = new PrintData(lightPrint)
+        printData.lightLevel = 1
+        printData.save(lightPrint)
+      }
+
+      GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(
+        lightPrint,
+        print.createItemStack(1), new ItemStack(net.minecraft.init.Items.glowstone_dust)))
+
+      {
+        val printData = new PrintData(lightPrint)
+        printData.lightLevel = 4
+        printData.save(lightPrint)
+      }
+
+      GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(
+        lightPrint,
+        print.createItemStack(1), new ItemStack(net.minecraft.init.Blocks.glowstone)))
+
+      // Switch/AccessPoint -> Relay conversion
+      GameRegistry.addShapelessRecipe(relay.createItemStack(1), accessPoint.createItemStack(1))
+      GameRegistry.addShapelessRecipe(relay.createItemStack(1), switch.createItemStack(1))
+
+      // Hover Boot dyeing
+      GameRegistry.addRecipe(new ColorizeRecipe(hoverBoots.item()))
+      GameRegistry.addRecipe(new DecolorizeRecipe(hoverBoots.item()))
+
+      // Cable dyeing
+      GameRegistry.addRecipe(new ColorizeRecipe(cable.block()))
+      GameRegistry.addRecipe(new DecolorizeRecipe(cable.block()))
+
+      // Loot disk cycling.
+      if (Settings.get.lootRecrafting) {
+        GameRegistry.addRecipe(new LootDiskCyclingRecipe())
+      }
     }
     catch {
       case e: Throwable => OpenComputers.log.error("Error parsing recipes, you may not be able to craft any items from this mod!", e)
@@ -173,141 +349,24 @@ object Recipes {
     list.clear()
   }
 
-  private def addRecipe(output: ItemStack, list: Config, name: String) = try {
-    if (list.hasPath(name)) {
-      val recipe = list.getConfig(name)
-      val recipeType = tryGetType(recipe)
-      try {
-        recipeType match {
-          case "shaped" => addShapedRecipe(output, recipe)
-          case "shapeless" => addShapelessRecipe(output, recipe)
-          case "furnace" => addFurnaceRecipe(output, recipe)
-          case "gt_assembler" =>
-            if (Mods.GregTech.isAvailable) {
-              addGTAssemblingMachineRecipe(output, recipe)
-            }
-            else {
-              OpenComputers.log.warn(s"Skipping GregTech assembler recipe for '$name' because GregTech is not present, you will not be able to craft this item!")
-              hide(output)
-            }
-          case other =>
-            OpenComputers.log.warn(s"Failed adding recipe for '$name', you will not be able to craft this item! The error was: Invalid recipe type '$other'.")
-            hide(output)
-        }
-      }
-      catch {
-        case e: RecipeException =>
-          OpenComputers.log.warn(s"Failed adding $recipeType recipe for '$name', you will not be able to craft this item! The error was: ${e.getMessage}")
-          hide(output)
-      }
-    }
-    else {
-      OpenComputers.log.info(s"No recipe for '$name', you will not be able to craft this item.")
-      hide(output)
+  private def addRecipe(output: ItemStack, recipe: Config, name: String) = try {
+    val recipeType = tryGetType(recipe)
+    recipeHandlers.get(recipeType) match {
+      case Some(recipeHandler) => recipeHandler(output, recipe)
+      case _ =>
+        OpenComputers.log.error(s"Failed adding recipe for $name, you will not be able to craft this item. The error was: Invalid recipe type '$recipeType'.")
+        hadErrors = true
     }
   }
   catch {
-    case e: Throwable =>
-      OpenComputers.log.error(s"Failed adding recipe for '$name', you will not be able to craft this item!", e)
-      hide(output)
+    case e: RecipeException =>
+      OpenComputers.log.error(s"Failed adding recipe for $name, you will not be able to craft this item.", e)
+      hadErrors = true
   }
 
-  private def addShapedRecipe(output: ItemStack, recipe: Config) {
-    val rows = recipe.getList("input").unwrapped().map {
-      case row: java.util.List[AnyRef]@unchecked => row.map(parseIngredient)
-      case other => throw new RecipeException(s"Invalid row entry for shaped recipe (not a list: $other).")
-    }
-    output.stackSize = tryGetCount(recipe)
+  def tryGetCount(recipe: Config) = if (recipe.hasPath("output")) recipe.getInt("output") else 1
 
-    var number = -1
-    var shape = mutable.ArrayBuffer.empty[String]
-    val input = mutable.ArrayBuffer.empty[AnyRef]
-    for (row <- rows) {
-      val (pattern, ingredients) = row.foldLeft((new StringBuilder, Seq.empty[AnyRef]))((acc, ingredient) => {
-        val (pattern, ingredients) = acc
-        ingredient match {
-          case _@(_: ItemStack | _: String) =>
-            number += 1
-            (pattern.append(('a' + number).toChar), ingredients ++ Seq(Char.box(('a' + number).toChar), ingredient))
-          case _ => (pattern.append(' '), ingredients)
-        }
-      })
-      shape += pattern.toString
-      input ++= ingredients
-    }
-    if (input.size > 0 && output.stackSize > 0) {
-      GameRegistry.addRecipe(new ExtendedShapedOreRecipe(output, shape ++ input: _*))
-    }
-    else hide(output)
-  }
-
-  private def addShapelessRecipe(output: ItemStack, recipe: Config) {
-    val input = recipe.getValue("input").unwrapped() match {
-      case list: java.util.List[AnyRef]@unchecked => list.map(parseIngredient)
-      case other => Seq(parseIngredient(other))
-    }
-    output.stackSize = tryGetCount(recipe)
-
-    if (input.size > 0 && output.stackSize > 0) {
-      GameRegistry.addRecipe(new ExtendedShapelessOreRecipe(output, input: _*))
-    }
-    else hide(output)
-  }
-
-  private def addGTAssemblingMachineRecipe(output: ItemStack, recipe: Config) {
-    val inputs = (recipe.getValue("input").unwrapped() match {
-      case list: java.util.List[AnyRef]@unchecked => list.map(parseIngredient)
-      case other => Seq(parseIngredient(other))
-    }) map {
-      case null => Array.empty[ItemStack]
-      case stack: ItemStack => Array(stack)
-      case name: String => Array(OreDictionary.getOres(name): _*)
-      case other => throw new RecipeException(s"Invalid ingredient type: $other.")
-    }
-    output.stackSize = tryGetCount(recipe)
-
-    if (inputs.size < 1 || inputs.size > 2) {
-      throw new RecipeException(s"Invalid recipe length: ${inputs.size}, should be 1 or 2.")
-    }
-
-    val inputCount = recipe.getIntList("count")
-    if (inputCount.size() != inputs.size) {
-      throw new RecipeException(s"Ingredient and input count mismatch: ${inputs.size} != ${inputCount.size}.")
-    }
-
-    val eu = recipe.getInt("eu")
-    val duration = recipe.getInt("time")
-
-    (inputs, inputCount).zipped.foreach((stacks, count) => stacks.foreach(stack => if (stack != null && count > 0) stack.stackSize = stack.getMaxStackSize min count))
-    inputs.padTo(2, null)
-
-    if (inputs(0) != null) {
-      for (input1 <- inputs(0)) {
-        if (inputs(1) != null) {
-          for (input2 <- inputs(1))
-            gregtech.api.GregTech_API.sRecipeAdder.addAssemblerRecipe(input1, input2, output, duration, eu)
-        }
-        else gregtech.api.GregTech_API.sRecipeAdder.addAssemblerRecipe(input1, null, output, duration, eu)
-      }
-    }
-  }
-
-  private def addFurnaceRecipe(output: ItemStack, recipe: Config) {
-    val input = parseIngredient(recipe.getValue("input").unwrapped())
-    output.stackSize = tryGetCount(recipe)
-
-    input match {
-      case stack: ItemStack =>
-        FurnaceRecipes.smelting.func_151394_a(stack, output, 0)
-      case name: String =>
-        for (stack <- OreDictionary.getOres(name)) {
-          FurnaceRecipes.smelting.func_151394_a(stack, output, 0)
-        }
-      case _ =>
-    }
-  }
-
-  private def parseIngredient(entry: AnyRef) = entry match {
+  def parseIngredient(entry: AnyRef): AnyRef = entry match {
     case map: java.util.Map[AnyRef, AnyRef]@unchecked =>
       if (map.contains("oreDict")) {
         map.get("oreDict") match {
@@ -354,6 +413,14 @@ object Recipes {
     case other => throw new RecipeException(s"Invalid ingredient type (not a map or string): $other")
   }
 
+  def parseFluidIngredient(entry: Config): Option[FluidStack] = {
+    val fluid = FluidRegistry.getFluid(entry.getString("name"))
+    val amount =
+      if (entry.hasPath("amount")) entry.getInt("amount")
+      else 1000
+    Option(new FluidStack(fluid, amount))
+  }
+
   private def findItem(name: String) = getObjectWithoutFallback(Item.itemRegistry, name).orElse(Item.itemRegistry.find {
     case item: Item => item.getUnlocalizedName == name || item.getUnlocalizedName == "item." + name
     case _ => false
@@ -369,8 +436,6 @@ object Recipes {
     else None
 
   private def tryGetType(recipe: Config) = if (recipe.hasPath("type")) recipe.getString("type") else "shaped"
-
-  private def tryGetCount(recipe: Config) = if (recipe.hasPath("output")) recipe.getInt("output") else 1
 
   private def tryGetId(ingredient: java.util.Map[AnyRef, AnyRef]): Int =
     if (ingredient.contains("subID")) ingredient.get("subID") match {
@@ -395,7 +460,7 @@ object Recipes {
   }
 
   private def hide(value: ItemStack) {
-    Items.multi.subItem(value) match {
+    Delegator.subItem(value) match {
       case Some(stack) => stack.showInItemList = false
       case _ => value.getItem match {
         case itemBlock: ItemBlock => itemBlock.field_150939_a match {
@@ -409,6 +474,6 @@ object Recipes {
     }
   }
 
-  private class RecipeException(message: String) extends RuntimeException(message)
+  class RecipeException(message: String) extends RuntimeException(message)
 
 }

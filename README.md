@@ -1,4 +1,5 @@
-## Welcome to OpenComputers
+![Welcome to OpenComputers](assets/misc/banner.png)
+
 OpenComputers is a Minecraft mod that adds programmable computers and robots to the game. The built-in computer implementation uses Lua 5.2 and is fully persistent. This means programs will continue running across reloads. For more information, please [see the wiki][wiki]. Feel invited to visit the [community forums][forums] or drop by in the [IRC channel #oc on esper.net][irc].
 
 A few useful links:
@@ -6,6 +7,7 @@ A few useful links:
 * [Downloads][releases]
 * [Bug Tracker][issues]
 * [Wiki][wiki]
+* [Ingame Manual][ingame manual]
 * [IRC][irc]
 * [Community Forums][forums]
 
@@ -23,7 +25,7 @@ This mod is [licensed under the **MIT license**](https://github.com/MightyPirate
    If you would like to contribute better textures for certain items or blocks, feel free to pull-request them. If you would like to contribute *alternative* textures, make it a resource pack, and post it on the forums, for example.
 3. **Documentation**  
    Help with keeping the [wiki][] up to date would be *really* appreciated. If you notice anything amiss and know better, fix it. If you don't ask someone who does, then fix it. If you had a question answered, consider adding that information somewhere in the wiki where you would have expected to find that information.  
-   There are also the [files containing the ingame help][manpages], which could probably be much better than they are right now. Improvements to them, and new ones (e.g. for the libraries, such as `text` or `sides`) would help a lot. Thanks!
+   There are also the files containing the ingame help [for programs][manpages] and [for blocks and items][manual], which could probably be much better than they are right now. Improvements to them, and new ones (e.g. for the libraries, such as `text` or `sides`) would help a lot. Thanks!
 4. **Robot Names**  
    Robots get a random name when placed (unless set with an Anvil). The list the names are chose from [can be found here][robot names]. Feel free to pull request additional names! *However*: since the list has grown to a considerable length already, here are the two basic criteria for new names: it must either be a real or fictional robot, or an AI that at least *appears* to be self-aware.
 
@@ -37,7 +39,7 @@ This mod is [licensed under the **MIT license**](https://github.com/MightyPirate
 4. **Core Scripts**  
    If you would like to contribute scripts to the "core" Lua code (which basically defines 'OpenOS'), please have a look at the [code conventions][] for Lua to save us all some time. Bug fixes are always welcome. Additional programs and features should be kept small. Bigger programs (rule of thumb: larger than 3KiB) should go onto loot disks.
 5. **Drivers**  
-   As of OC 1.4, mod interaction that was previously provided by OpenComponents it now fully integrated into OC itself. If you wish to contribute a drivers for blocks from other mods, cool! Have a look at the [integration][] package to get an idea of how to structure modules and read the readme in that package for more information (in particular on additional criteria to get your PR merged).
+   As of OC 1.4, mod interaction that was previously provided by OpenComponents it now fully integrated into OC itself. If you wish to contribute a driver for blocks from other mods, cool! Have a look at the [integration][] package to get an idea of how to structure modules and read the readme in that package for more information (in particular on additional criteria to get your PR merged).
 
 ####Pull requests
 The following are a few quick guidelines on pull requests. That is to say they are not necessarily *rules*, so there may be exceptions and all that. Just try to stick to those points as a baseline.
@@ -45,44 +47,46 @@ The following are a few quick guidelines on pull requests. That is to say they a
 - Make sure it builds and works.
 - Try to keep your changes as minimal as possible. In particular, no whitespace changes in existing files, please.
 - Feel free to code in Java, but don't be surprised if I convert it to Scala later on, if I feel it makes the code more concise ;-)
-- When adding mod dependencies, keep them *weak*, i.e. make sure OC still works without that mod. Also, prefer adding a gradle dependency over adding API class files to the repo.
-- Squash your commits!
+- When adding mod dependencies, keep them *weak*, i.e. make sure OC still works without that mod. Also, prefer adding a Gradle dependency over adding API class files to the repo.
+- [Squash](http://gitready.com/advanced/2009/02/10/squashing-commits-with-rebase.html) your commits!
 
 Also, and this should go without saying, your contributed code will also fall under OC's license, unless otherwise specified (in the super rare case of adding third-party stuff, add the according license information as a `LICENSE-???` file, please).
 
 ## Extending
 ### In your own mod
-To use [the API][api] in your own mod, either get the API JAR from the [build server][jenkins], or if you're using gradle, add a dependency to the maven repo:
+To use [the API][api] in your own mod, either get the API JAR from the [build server][jenkins], or if you're using [Gradle](http://gradle.org/), add a dependency to the maven repo:
 ```groovy
 repositories {
     maven { url = "http://maven.cil.li/" }
 }
 dependencies {
-    compile "li.cil.oc:OpenComputers:MC1.7.10-1.4.+:api"
+    compile "li.cil.oc:OpenComputers:MC1.7.10-1.5.+:api"
 }
 ```
 Adjust the version number accordingly to the version you'd like to build against.
 
-To run the mod in your development environment, download the [`dev` JAR from the build server][dev-jar] and drop it into your dev env's `eclipse/mods` folder.
+To run the mod in your development environment, download the [`dev` JAR from the build server][dev-jar] and drop it into your development environment's `eclipse/mods` (Eclipse) or `run/mods` (IntelliJ IDEA) folder.
 
 Alternatively, leave out the `api` classifier and you can build against the dev JAR directly. This way you don't have to add it to your mods folder, but you will have to add `-Dfml.coreMods.load=li.cil.oc.common.launch.TransformerLoader` to the VM options in your run configuration.
 
 If you have any questions, please do not hesitate to ask, either in the [forums][] or in the [IRC][irc]!
 
 ### OpenComputers
-Want to tinker with the mod itself? Here is how - for IntelliJ IDEA users. For eclipse I assume the process will be similar.
+Want to tinker with the mod itself? Here is how - for IntelliJ IDEA users.
 
 **Important**
-- Make sure you have the Gradle plugin enabled in IDEA (File->Settings->Plugins).
+- Make sure you have the Gradle plugin enabled in IntelliJ IDEA (File->Settings->Plugins).
 - Make sure you have the Scala plugin enabled.
 
 Clone the repository, then in it run  
 `gradlew setupDecompWorkspace`  
 to setup the workspace, including assets and such, then  
 `gradlew idea`  
-to create an IntellJ IDEA project.
+to create an IntelliJ IDEA project.
 
 Open the project and you will be asked to *import the Gradle project* (check your Event Log if you missed the pop-up). **Do so**. This will configure additionally referenced libraries.
+
+In the case you wish to use Eclipse rather than IntelliJ IDEA, the process is mostly the same, except you must run `gradlew eclipse` rather than `gradlew idea`.
 
 
 
@@ -95,10 +99,12 @@ Open the project and you will be asked to *import the Gradle project* (check you
 [jenkins]: http://ci.cil.li/
 [localizations]: https://github.com/MightyPirates/OpenComputers/tree/master-MC1.7.10/src/main/resources/assets/opencomputers/lang
 [loot]: https://github.com/MightyPirates/OpenComputers/tree/master-MC1.7.10/src/main/resources/assets/opencomputers/loot
-[manpages]: https://github.com/MightyPirates/OpenComputers/tree/master-MC1.7.10/src/main/resources/assets/opencomputers/lua/rom/usr/man
+[manpages]: https://github.com/MightyPirates/OpenComputers/tree/master-MC1.7.10/src/main/resources/assets/opencomputers/loot/OpenOS/usr/man
+[manual]: https://github.com/MightyPirates/OpenComputers/tree/master-MC1.7.10/src/main/resources/assets/opencomputers/doc
 [mcf]: http://www.minecraftforum.net/topic/2201440-opencomputers-v122/
 [pack.mcmeta]: https://github.com/MightyPirates/OpenComputers/blob/master-MC1.7.10/src/main/resources/pack.mcmeta
 [releases]: https://github.com/MightyPirates/OpenComputers/releases
 [robot names]: https://github.com/MightyPirates/OpenComputers/blob/master-MC1.7.10/src/main/resources/assets/opencomputers/robot.names
 [wiki]: http://ocdoc.cil.li/
 [integration]: https://github.com/MightyPirates/OpenComputers/tree/master-MC1.7.10/src/main/scala/li/cil/oc/integration
+[ingame manual]: https://github.com/MightyPirates/OpenComputers/tree/master-MC1.7.10/src/main/resources/assets/opencomputers/doc

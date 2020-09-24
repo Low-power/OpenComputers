@@ -7,7 +7,7 @@ import li.cil.oc.util.RenderState
 import org.lwjgl.input.Mouse
 import org.lwjgl.opengl.GL11
 
-class Screen(val buffer: api.component.TextBuffer, val hasMouse: Boolean, val hasKeyboardCallback: () => Boolean, val hasPower: () => Boolean) extends traits.InputBuffer {
+class Screen(val buffer: api.internal.TextBuffer, val hasMouse: Boolean, val hasKeyboardCallback: () => Boolean, val hasPower: () => Boolean) extends traits.InputBuffer {
   override protected def hasKeyboard = hasKeyboardCallback()
 
   override protected def bufferX = 8 + x
@@ -27,13 +27,11 @@ class Screen(val buffer: api.component.TextBuffer, val hasMouse: Boolean, val ha
     if (hasMouse && Mouse.hasWheel && Mouse.getEventDWheel != 0) {
       val mouseX = Mouse.getEventX * width / mc.displayWidth
       val mouseY = height - Mouse.getEventY * height / mc.displayHeight - 1
-      val bx = (mouseX - x - bufferMargin) / TextBufferRenderCache.renderer.charRenderWidth.toDouble
-      val by = (mouseY - y - bufferMargin) / TextBufferRenderCache.renderer.charRenderHeight.toDouble
-      val bw = buffer.getWidth
-      val bh = buffer.getHeight
-      if (bx >= 0 && by >= 0 && bx < bw && by < bh) {
-        val scroll = math.signum(Mouse.getEventDWheel)
-        buffer.mouseScroll(bx, by, scroll, null)
+      toBufferCoordinates(mouseX, mouseY) match {
+        case Some((bx, by)) =>
+          val scroll = math.signum(Mouse.getEventDWheel)
+          buffer.mouseScroll(bx, by, scroll, null)
+        case _ => // Ignore when out of bounds.
       }
     }
   }
@@ -60,15 +58,9 @@ class Screen(val buffer: api.component.TextBuffer, val hasMouse: Boolean, val ha
     super.mouseMovedOrUp(mouseX, mouseY, button)
     if (hasMouse && button >= 0) {
       if (didDrag) {
-        val bx = (mouseX - x - bufferMargin) / scale / TextBufferRenderCache.renderer.charRenderWidth
-        val by = (mouseY - y - bufferMargin) / scale / TextBufferRenderCache.renderer.charRenderHeight
-        val bw = buffer.getWidth
-        val bh = buffer.getHeight
-        if (bx >= 0 && by >= 0 && bx < bw && by < bh) {
-          buffer.mouseUp(bx, by, button, null)
-        }
-        else {
-          buffer.mouseUp(-1.0, -1.0, button, null)
+        toBufferCoordinates(mouseX, mouseY) match {
+          case Some((bx, by)) => buffer.mouseUp(bx, by, button, null)
+          case _ => buffer.mouseUp(-1.0, -1.0, button, null)
         }
       }
       didDrag = false
@@ -78,19 +70,24 @@ class Screen(val buffer: api.component.TextBuffer, val hasMouse: Boolean, val ha
   }
 
   private def clickOrDrag(mouseX: Int, mouseY: Int, button: Int) {
-    val bx = (mouseX - x - bufferMargin) / scale / TextBufferRenderCache.renderer.charRenderWidth
-    val by = (mouseY - y - bufferMargin) / scale / TextBufferRenderCache.renderer.charRenderHeight
-    val bw = buffer.getWidth
-    val bh = buffer.getHeight
-    if (bx >= 0 && by >= 0 && bx < bw && by < bh) {
-      if (bx.toInt != mx || by.toInt != my) {
+    toBufferCoordinates(mouseX, mouseY) match {
+      case Some((bx, by)) if bx.toInt != mx || (by*2).toInt != my =>
         if (mx >= 0 && my >= 0) buffer.mouseDrag(bx, by, button, null)
         else buffer.mouseDown(bx, by, button, null)
         didDrag = mx >= 0 && my >= 0
         mx = bx.toInt
-        my = by.toInt
-      }
+        my = (by*2).toInt // for high precision mode, sends some unnecessary packets when not using it, but eh
+      case _ =>
     }
+  }
+
+  private def toBufferCoordinates(mouseX: Int, mouseY: Int): Option[(Double, Double)] = {
+    val bx = (mouseX - x - bufferMargin) / scale / TextBufferRenderCache.renderer.charRenderWidth
+    val by = (mouseY - y - bufferMargin) / scale / TextBufferRenderCache.renderer.charRenderHeight
+    val bw = buffer.getViewportWidth
+    val bh = buffer.getViewportHeight
+    if (bx >= 0 && by >= 0 && bx < bw && by < bh) Some((bx, by))
+    else None
   }
 
   override def drawScreen(mouseX: Int, mouseY: Int, dt: Float): Unit = {

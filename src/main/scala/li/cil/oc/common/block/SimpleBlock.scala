@@ -27,6 +27,7 @@ import net.minecraftforge.common.util.ForgeDirection
 
 class SimpleBlock(material: Material = Material.iron) extends Block(material) {
   setHardness(2f)
+  setResistance(5)
   setCreativeTab(CreativeTab)
 
   var showInItemList = true
@@ -76,7 +77,9 @@ class SimpleBlock(material: Material = Material.iron) extends Block(material) {
     val custom = customTextures
     for (side <- ForgeDirection.VALID_DIRECTIONS) {
       custom(side.ordinal) match {
-        case Some(name) => icons(side.ordinal) = iconRegister.registerIcon(Settings.resourceDomain + ":" + name)
+        case Some(name) =>
+          if (name.contains(":")) icons(side.ordinal) = iconRegister.registerIcon(name)
+          else icons(side.ordinal) = iconRegister.registerIcon(Settings.resourceDomain + ":" + name)
         case _ =>
       }
     }
@@ -176,10 +179,10 @@ class SimpleBlock(material: Material = Material.iron) extends Block(material) {
 
   override def recolourBlock(world: World, x: Int, y: Int, z: Int, side: ForgeDirection, colour: Int) =
     world.getTileEntity(x, y, z) match {
-      case colored: Colored if colored.color != colour =>
-        colored.color = colour
+      case colored: Colored if colored.color != Color.byMeta(colour) =>
+        colored.color = Color.byMeta(colour)
         world.markBlockForUpdate(x, y, z)
-        false // Don't consume items.
+        true // Blame Vexatos.
       case _ => super.recolourBlock(world, x, y, z, side, colour)
     }
 
@@ -206,16 +209,16 @@ class SimpleBlock(material: Material = Material.iron) extends Block(material) {
   }
 
   // NOTE: must not be final for immibis microblocks to work.
-  override def collisionRayTrace(world: World, x: Int, y: Int, z: Int, origin: Vec3, direction: Vec3) =
-    this.synchronized(intersect(world, x, y, z, origin, direction))
+  override def collisionRayTrace(world: World, x: Int, y: Int, z: Int, start: Vec3, end: Vec3) =
+    this.synchronized(intersect(world, x, y, z, start, end))
 
   override def getCollisionBoundingBoxFromPool(world: World, x: Int, y: Int, z: Int) = this.synchronized {
     doSetBlockBoundsBasedOnState(world, x, y, z)
     super.getCollisionBoundingBoxFromPool(world, x, y, z)
   }
 
-  protected def intersect(world: World, x: Int, y: Int, z: Int, origin: Vec3, direction: Vec3) =
-    super.collisionRayTrace(world, x, y, z, origin, direction)
+  protected def intersect(world: World, x: Int, y: Int, z: Int, start: Vec3, end: Vec3) =
+    super.collisionRayTrace(world, x, y, z, start, end)
 
   final override def canPlaceBlockOnSide(world: World, x: Int, y: Int, z: Int, side: Int) =
     canPlaceBlockOnSide(world, x, y, z, toLocal(world, x, y, z, ForgeDirection.getOrientation(side).getOpposite))
@@ -255,6 +258,9 @@ class SimpleBlock(material: Material = Material.iron) extends Block(material) {
       case colored: Colored if Color.isDye(player.getHeldItem) =>
         colored.color = Color.dyeColor(player.getHeldItem)
         world.markBlockForUpdate(x, y, z)
+        if (colored.consumesDye) {
+          player.getHeldItem.splitStack(1)
+        }
         true
       case _ => onBlockActivated(world, x, y, z, player, ForgeDirection.getOrientation(side), hitX, hitY, hitZ)
     }

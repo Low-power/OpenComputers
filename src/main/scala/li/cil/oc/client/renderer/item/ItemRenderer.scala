@@ -1,18 +1,23 @@
 package li.cil.oc.client.renderer.item
 
+import com.google.common.base.Strings
+import li.cil.oc.Constants
 import li.cil.oc.Settings
 import li.cil.oc.api
 import li.cil.oc.api.detail.ItemInfo
-import li.cil.oc.client.Textures
+import li.cil.oc.client.KeyBindings
+import li.cil.oc.client.renderer.block.Print
 import li.cil.oc.client.renderer.entity.DroneRenderer
-import li.cil.oc.integration.opencomputers.Item
+import li.cil.oc.common.item.data.PrintData
+import li.cil.oc.util.Color
+import li.cil.oc.util.ExtendedAABB
 import li.cil.oc.util.RenderState
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.ScaledResolution
 import net.minecraft.client.renderer.entity.RenderItem
 import net.minecraft.client.renderer.entity.RenderManager
+import net.minecraft.client.renderer.texture.TextureMap
 import net.minecraft.item.ItemStack
-import net.minecraft.util.AxisAlignedBB
 import net.minecraft.util.EnumChatFormatting
 import net.minecraftforge.client.IItemRenderer
 import net.minecraftforge.client.IItemRenderer.ItemRenderType
@@ -25,34 +30,26 @@ object ItemRenderer extends IItemRenderer {
   val renderItem = new RenderItem()
   renderItem.setRenderManager(RenderManager.instance)
 
-  lazy val craftingUpgrade = api.Items.get("craftingUpgrade")
-  lazy val generatorUpgrade = api.Items.get("generatorUpgrade")
-  lazy val inventoryUpgrade = api.Items.get("inventoryUpgrade")
-  lazy val drone = api.Items.get("drone")
+  lazy val drone = api.Items.get(Constants.ItemName.Drone)
 
-  lazy val floppy = api.Items.get("floppy")
-  lazy val lootDisk = api.Items.get("lootDisk")
+  lazy val floppy = api.Items.get(Constants.ItemName.Floppy)
+  lazy val lootDisk = api.Items.get(Constants.ItemName.LootDisk)
+  lazy val print = api.Items.get(Constants.BlockName.Print)
 
-  def bounds = AxisAlignedBB.getBoundingBox(-0.1, -0.1, -0.1, 0.1, 0.1, 0.1)
+  lazy val nullShape = new PrintData.Shape(ExtendedAABB.unitBounds, Settings.resourceDomain + ":White", Some(Color.Lime))
 
-  def isUpgrade(descriptor: ItemInfo) =
-    descriptor == craftingUpgrade ||
-      descriptor == generatorUpgrade ||
-      descriptor == inventoryUpgrade
-
-  def isFloppy(descriptor: ItemInfo) =
-    descriptor == floppy ||
-      descriptor == lootDisk
+  def isFloppy(descriptor: ItemInfo) = descriptor == floppy || descriptor == lootDisk
 
   override def handleRenderType(stack: ItemStack, renderType: ItemRenderType) = {
     val descriptor = api.Items.get(stack)
-    (renderType == ItemRenderType.EQUIPPED && isUpgrade(api.Items.get(stack))) ||
-      (renderType == ItemRenderType.INVENTORY && isFloppy(api.Items.get(stack))) ||
-      ((renderType == ItemRenderType.INVENTORY || renderType == ItemRenderType.ENTITY || renderType == ItemRenderType.EQUIPPED || renderType == ItemRenderType.EQUIPPED_FIRST_PERSON) && descriptor == drone)
+    (renderType == ItemRenderType.INVENTORY && isFloppy(api.Items.get(stack))) ||
+      ((renderType == ItemRenderType.INVENTORY || renderType == ItemRenderType.ENTITY || renderType == ItemRenderType.EQUIPPED || renderType == ItemRenderType.EQUIPPED_FIRST_PERSON) && descriptor == drone) ||
+      ((renderType == ItemRenderType.INVENTORY || renderType == ItemRenderType.ENTITY || renderType == ItemRenderType.EQUIPPED || renderType == ItemRenderType.EQUIPPED_FIRST_PERSON) && api.Items.get(stack) == print)
   }
 
   override def shouldUseRenderHelper(renderType: ItemRenderType, stack: ItemStack, helper: ItemRendererHelper) =
     if (renderType == ItemRenderType.ENTITY) true
+    else if (renderType == ItemRenderType.INVENTORY && api.Items.get(stack) == print) helper == ItemRendererHelper.INVENTORY_BLOCK
     // Note: it's easier to revert changes introduced by this "helper" than by
     // the code that applies if no helper is used...
     else helper == ItemRendererHelper.EQUIPPED_BLOCK
@@ -63,34 +60,8 @@ object ItemRenderer extends IItemRenderer {
     val mc = Minecraft.getMinecraft
     val tm = mc.getTextureManager
     val descriptor = api.Items.get(stack)
-    if (isUpgrade(descriptor)) {
 
-      // Revert offset introduced by the render "helper".
-      GL11.glTranslatef(0.5f, 0.5f, 0.5f)
-
-      if (descriptor == api.Items.get("craftingUpgrade")) {
-        tm.bindTexture(Textures.upgradeCrafting)
-        drawSimpleBlock()
-
-        RenderState.checkError(getClass.getName + ".renderItem: crafting upgrade")
-      }
-
-      else if (descriptor == api.Items.get("generatorUpgrade")) {
-        tm.bindTexture(Textures.upgradeGenerator)
-        drawSimpleBlock(if (Item.dataTag(stack).getInteger("remainingTicks") > 0) 0.5f else 0)
-
-        RenderState.checkError(getClass.getName + ".renderItem: generator upgrade")
-      }
-
-      else if (descriptor == api.Items.get("inventoryUpgrade")) {
-        tm.bindTexture(Textures.upgradeInventory)
-        drawSimpleBlock()
-
-        RenderState.checkError(getClass.getName + ".renderItem: inventory upgrade")
-      }
-    }
-
-    else if (isFloppy(descriptor)) {
+    if (isFloppy(descriptor)) {
       GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS)
       renderItem.renderItemIntoGUI(null, tm, stack, 0, 0)
       val res = new ScaledResolution(mc, mc.displayWidth, mc.displayHeight)
@@ -116,6 +87,7 @@ object ItemRenderer extends IItemRenderer {
 
       RenderState.checkError("ItemRenderer.renderItem: floppy")
     }
+
     else if (descriptor == drone) {
       GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS)
       GL11.glPushMatrix()
@@ -144,67 +116,125 @@ object ItemRenderer extends IItemRenderer {
       RenderState.checkError("ItemRenderer.renderItem: drone")
     }
 
+    else if (descriptor == print) {
+      GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS)
+      GL11.glPushMatrix()
+
+      if (renderType == ItemRenderType.ENTITY) {
+        GL11.glTranslatef(-0.5f, 0, -0.5f)
+      }
+
+      val data = new PrintData(stack)
+      Minecraft.getMinecraft.renderEngine.bindTexture(TextureMap.locationBlocksTexture)
+      val state =
+        if (data.hasActiveState && KeyBindings.showExtendedTooltips)
+          data.stateOn
+        else
+          data.stateOff
+      for (shape <- state) {
+        drawShape(shape)
+      }
+      if (state.isEmpty) {
+        drawShape(nullShape) // Avoid tessellator erroring.
+      }
+
+      GL11.glPopMatrix()
+      GL11.glPopAttrib()
+
+      RenderState.checkError("ItemRenderer.renderItem: print")
+    }
+
     RenderState.checkError("ItemRenderer.renderItem: leaving")
   }
 
-  private def drawSimpleBlock(frontOffset: Float = 0) {
+  private def drawShape(shape: PrintData.Shape) {
+    val bounds = shape.bounds
+    val texture = Print.resolveTexture(shape.texture)
+
+    if (Strings.isNullOrEmpty(shape.texture)) {
+      RenderState.makeItBlend()
+      GL11.glColor4f(1, 1, 1, 0.25f)
+    }
+
+    shape.tint.foreach(color => {
+      val r = (color >> 16).toByte
+      val g = (color >> 8).toByte
+      val b = color.toByte
+      GL11.glColor3ub(r, g, b)
+    })
+
     GL11.glBegin(GL11.GL_QUADS)
+    GL11.glDisable(GL11.GL_CULL_FACE)
 
     // Front.
     GL11.glNormal3f(0, 0, 1)
-    GL11.glTexCoord2f(frontOffset, 0.5f)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minX * 16), texture.getInterpolatedV(16 - bounds.minY * 16))
     GL11.glVertex3d(bounds.minX, bounds.minY, bounds.maxZ)
-    GL11.glTexCoord2f(frontOffset + 0.5f, 0.5f)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxX * 16), texture.getInterpolatedV(16 - bounds.minY * 16))
     GL11.glVertex3d(bounds.maxX, bounds.minY, bounds.maxZ)
-    GL11.glTexCoord2f(frontOffset + 0.5f, 0)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxX * 16), texture.getInterpolatedV(16 - bounds.maxY * 16))
     GL11.glVertex3d(bounds.maxX, bounds.maxY, bounds.maxZ)
-    GL11.glTexCoord2f(frontOffset, 0)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minX * 16), texture.getInterpolatedV(16 - bounds.maxY * 16))
     GL11.glVertex3d(bounds.minX, bounds.maxY, bounds.maxZ)
+
+    // Back.
+    GL11.glNormal3f(0, 0, -1)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxX * 16), texture.getInterpolatedV(16 - bounds.minY * 16))
+    GL11.glVertex3d(bounds.maxX, bounds.minY, bounds.minZ)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minX * 16), texture.getInterpolatedV(16 - bounds.minY * 16))
+    GL11.glVertex3d(bounds.minX, bounds.minY, bounds.minZ)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minX * 16), texture.getInterpolatedV(16 - bounds.maxY * 16))
+    GL11.glVertex3d(bounds.minX, bounds.maxY, bounds.minZ)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxX * 16), texture.getInterpolatedV(16 - bounds.maxY * 16))
+    GL11.glVertex3d(bounds.maxX, bounds.maxY, bounds.minZ)
 
     // Top.
     GL11.glNormal3f(0, 1, 0)
-    GL11.glTexCoord2f(1, 0.5f)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxX * 16), texture.getInterpolatedV(bounds.maxZ * 16))
     GL11.glVertex3d(bounds.maxX, bounds.maxY, bounds.maxZ)
-    GL11.glTexCoord2f(1, 1)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxX * 16), texture.getInterpolatedV(bounds.minZ * 16))
     GL11.glVertex3d(bounds.maxX, bounds.maxY, bounds.minZ)
-    GL11.glTexCoord2f(0.5f, 1)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minX * 16), texture.getInterpolatedV(bounds.minZ * 16))
     GL11.glVertex3d(bounds.minX, bounds.maxY, bounds.minZ)
-    GL11.glTexCoord2f(0.5f, 0.5f)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minX * 16), texture.getInterpolatedV(bounds.maxZ * 16))
     GL11.glVertex3d(bounds.minX, bounds.maxY, bounds.maxZ)
 
     // Bottom.
     GL11.glNormal3f(0, -1, 0)
-    GL11.glTexCoord2f(0.5f, 0.5f)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minX * 16), texture.getInterpolatedV(bounds.maxZ * 16))
     GL11.glVertex3d(bounds.minX, bounds.minY, bounds.maxZ)
-    GL11.glTexCoord2f(0.5f, 1)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minX * 16), texture.getInterpolatedV(bounds.minZ * 16))
     GL11.glVertex3d(bounds.minX, bounds.minY, bounds.minZ)
-    GL11.glTexCoord2f(1, 1)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxX * 16), texture.getInterpolatedV(bounds.minZ * 16))
     GL11.glVertex3d(bounds.maxX, bounds.minY, bounds.minZ)
-    GL11.glTexCoord2f(1, 0.5f)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxX * 16), texture.getInterpolatedV(bounds.maxZ * 16))
     GL11.glVertex3d(bounds.maxX, bounds.minY, bounds.maxZ)
 
     // Left.
     GL11.glNormal3f(1, 0, 0)
-    GL11.glTexCoord2f(0, 0.5f)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxZ * 16), texture.getInterpolatedV(16 - bounds.maxY * 16))
     GL11.glVertex3d(bounds.maxX, bounds.maxY, bounds.maxZ)
-    GL11.glTexCoord2f(0, 1)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxZ * 16), texture.getInterpolatedV(16 - bounds.minY * 16))
     GL11.glVertex3d(bounds.maxX, bounds.minY, bounds.maxZ)
-    GL11.glTexCoord2f(0.5f, 1)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minZ * 16), texture.getInterpolatedV(16 - bounds.minY * 16))
     GL11.glVertex3d(bounds.maxX, bounds.minY, bounds.minZ)
-    GL11.glTexCoord2f(0.5f, 0.5f)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minZ * 16), texture.getInterpolatedV(16 - bounds.maxY * 16))
     GL11.glVertex3d(bounds.maxX, bounds.maxY, bounds.minZ)
 
     // Right.
     GL11.glNormal3f(-1, 0, 0)
-    GL11.glTexCoord2f(0, 1)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxZ * 16), texture.getInterpolatedV(16 - bounds.minY * 16))
     GL11.glVertex3d(bounds.minX, bounds.minY, bounds.maxZ)
-    GL11.glTexCoord2f(0, 0.5f)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.maxZ * 16), texture.getInterpolatedV(16 - bounds.maxY * 16))
     GL11.glVertex3d(bounds.minX, bounds.maxY, bounds.maxZ)
-    GL11.glTexCoord2f(0.5f, 0.5f)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minZ * 16), texture.getInterpolatedV(16 - bounds.maxY * 16))
     GL11.glVertex3d(bounds.minX, bounds.maxY, bounds.minZ)
-    GL11.glTexCoord2f(0.5f, 1)
+    GL11.glTexCoord2f(texture.getInterpolatedU(bounds.minZ * 16), texture.getInterpolatedV(16 - bounds.minY * 16))
     GL11.glVertex3d(bounds.minX, bounds.minY, bounds.minZ)
 
     GL11.glEnd()
+    GL11.glEnable(GL11.GL_CULL_FACE)
+
+    GL11.glColor3f(1, 1, 1)
   }
 }
