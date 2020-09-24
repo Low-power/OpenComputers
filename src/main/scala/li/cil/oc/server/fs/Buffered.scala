@@ -2,7 +2,7 @@ package li.cil.oc.server.fs
 
 import java.io
 import java.io.FileNotFoundException
-
+import java.nio.ByteBuffer
 import li.cil.oc.api.fs.Mode
 import net.minecraft.nbt.NBTTagCompound
 import org.apache.commons.io.FileUtils
@@ -103,7 +103,19 @@ trait Buffered extends OutputStreamFileSystem {
             childFile.createNewFile()
             val out = new io.FileOutputStream(childFile).getChannel
             val in = openInputChannel(childPath).get
-            out.transferFrom(in, 0, Long.MaxValue)
+
+            val buffer = ByteBuffer.allocateDirect(16 * 1024)
+            while (in.read(buffer) != -1) {
+              buffer.flip()
+              out.write(buffer)
+              buffer.compact()
+            }
+
+            buffer.flip()
+            while (buffer.hasRemaining) {
+              out.write(buffer)
+            }
+
             out.close()
             in.close()
             childFile.setLastModified(time)
